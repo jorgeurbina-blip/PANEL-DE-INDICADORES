@@ -286,12 +286,101 @@ fetch(url)
   });
 
 });
-</script>
+<!-- Agregar esto justo antes de cerrar </body> -->
+<div id="graficosRAC" style="background:white;padding:10px;margin-bottom:10px;border-radius:10px;box-shadow:0 4px 10px rgba(0,0,0,0.1);">
+  <strong>📈 Tendencia del RAC seleccionado:</strong>
+  <canvas id="graficoRAC"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const canvasRAC = document.getElementById("graficoRAC");
+const ctxRAC = canvasRAC.getContext("2d");
+let graficoRAC;
+
+function mostrarGraficoRAC(rac, vista) {
+  const idxRAC = encabezados.indexOf("RAC");
+  const idxInicio = encabezados.indexOf("REICIENCIA"); // Ajusta según nombre exacto
+  if(idxInicio === -1) return;
+
+  // Filtrar datos según RAC y vista
+  const datosFiltrados = datos.filter(f => {
+    if(f[idxRAC] !== rac) return false;
+    if(vista==="dia") return f[IDX.DIA] && !/total/i.test(f[IDX.DIA].toLowerCase());
+    if(vista==="semana") return f[IDX.SEMANA] && /total semana/i.test(f[IDX.SEMANA].toLowerCase());
+    if(vista==="mes") return f[IDX.MES] && /total/i.test(f[IDX.MES].toLowerCase());
+    return false;
+  });
+
+  if(datosFiltrados.length === 0){
+    if(graficoRAC) graficoRAC.destroy();
+    ctxRAC.clearRect(0,0,canvasRAC.width,canvasRAC.height);
+    ctxRAC.font="16px Arial";
+    ctxRAC.fillText(`No hay datos para ${rac}`,10,50);
+    return;
+  }
+
+  // Preparar datasets para todas las columnas desde REICIENCIA
+  const datasets = [];
+  for(let i=idxInicio; i<encabezados.length; i++){
+    const col = encabezados[i];
+    const valores = datosFiltrados.map(f=>{
+      const valStr = f[i].replace("%","").replace(",",".");
+      const valNum = parseFloat(valStr);
+      return isNaN(valNum) ? null : valNum;
+    });
+    if(valores.every(v=>v===null)) continue; // Ignorar columnas sin datos
+    datasets.push({
+      label: col,
+      data: valores,
+      borderColor: `hsl(${Math.random()*360},70%,50%)`,
+      fill: false,
+      tension: 0.3,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+      borderWidth: 2
+    });
+  }
+
+  const labels = datosFiltrados.map(f=>{
+    if(vista==="dia") return f[IDX.DIA];
+    if(vista==="semana") return f[IDX.SEMANA];
+    if(vista==="mes") return f[IDX.MES];
+    return "";
+  });
+
+  if(graficoRAC) graficoRAC.destroy();
+  graficoRAC = new Chart(ctxRAC,{
+    type:'line',
+    data:{labels,datasets},
+    options:{
+      responsive:true,
+      plugins:{legend:{display:true}},
+      scales:{y:{beginAtZero:true}}
+    }
+  });
+}
+
+// Evento click en fila de tabla
+tbody.addEventListener("click", e=>{
+  const tr = e.target.closest("tr");
+  if(!tr) return;
+  const celdas = tr.querySelectorAll("td");
+  const rac = celdas[encabezados.indexOf("RAC")].textContent.trim();
+  if(!rac) return;
+  mostrarGraficoRAC(rac, vistaSel.value);
+
+  // Marcar fila seleccionada
+  tbody.querySelectorAll("tr").forEach(row=>row.classList.remove("selected"));
+  tr.classList.add("selected");
+});
+
 
 
 </script>
 </body>
 </html>
+
 
 
 
