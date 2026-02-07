@@ -105,19 +105,15 @@ fetch(url)
   const encabezados = filas[0];
   const datos = filas.slice(1);
 
-  console.log("Encabezados:", encabezados);
-  console.log("Primeros datos:", datos.slice(0,3));
-
   const IDX = {
     DIA: encabezados.indexOf("DIA"),
     SEMANA: encabezados.indexOf("SEMANA"),
-    MES: encabezados.indexOf("MES")
+    MES: encabezados.indexOf("MES"),
+    RAC: encabezados.indexOf("RAC")
   };
 
-  console.log("Índices:", IDX);
-
-  if(IDX.DIA === -1 || IDX.SEMANA === -1 || IDX.MES === -1){
-    console.error("Columnas DIA, SEMANA o MES no encontradas, revisar CSV");
+  if(IDX.DIA === -1 || IDX.SEMANA === -1 || IDX.MES === -1 || IDX.RAC === -1){
+    console.error("Columnas DIA, SEMANA, MES o RAC no encontradas, revisar CSV");
     return;
   }
 
@@ -177,25 +173,132 @@ fetch(url)
     const v = document.getElementById("vista").value;
     const m = mesSel.value;
 
-    // Para debug:
-    console.log(`Filtrando con texto: "${t}", vista: "${v}", mes: "${m}"`);
-
+    // Filtro básico, sin bloquear por vista ni mes para mostrar más datos:
     const filtrado = datos.filter(f => {
       if(m && f[IDX.MES] !== m) return false;
-      // COMENTAMOS temporalmente filtro por vista para probar datos:
-      /*
-      if(v === "dia"){
-        if(!f[IDX.DIA] || f[IDX.DIA].toLowerCase().includes("total")) return false;
-      }
-      if(v === "semana" && !f[IDX.SEMANA].includes("Total Semana")) return false;
-      if(v === "mes" && !f[IDX.MES].includes("Total")) return false;
-      */
       return f.join(" ").toLowerCase().includes(t);
     });
-    console.log("Datos filtrados:", filtrado.length);
     render(filtrado);
   }
 
+  // Función para mostrar gráfico de tendencia
+  function mostrarGraficoTendencia(racSeleccionado, vista) {
+    const contenedorGrafico = document.getElementById("graficoRAC");
+    const ctx = contenedorGrafico.getContext("2d");
+    contenedorGrafico.style.height = "250px";
+
+    // Filtrar datos para ese RAC y vista (día, semana o mes)
+    const datosFiltrados = datos.filter(f => {
+      if(f[IDX.RAC] !== racSeleccionado) return false;
+
+      if(vista === "dia") {
+        return f[IDX.DIA] && !/total/i.test(f[IDX.DIA].toLowerCase());
+      }
+      if(vista === "semana") {
+        return f[IDX.SEMANA] && /total semana/i.test(f[IDX.SEMANA].toLowerCase());
+      }
+      if(vista === "mes") {
+        return f[IDX.MES] && /total/i.test(f[IDX.MES].toLowerCase());
+      }
+      return false;
+    });
+
+    if(datosFiltrados.length === 0){
+      if(window.grafico) window.grafico.destroy();
+      ctx.clearRect(0, 0, contenedorGrafico.width, contenedorGrafico.height);
+      ctx.font = "16px Arial";
+      ctx.fillText(`No hay datos para la tendencia de ${racSeleccionado}`, 10, 50);
+      return;
+    }
+
+    // Seleccionar un KPI para mostrar (ejemplo: "% FCR 1dia")
+    const kpiName = "% FCR 1dia";
+    const idxKPI = encabezados.indexOf(kpiName);
+    if(idxKPI === -1){
+      if(window.grafico) window.grafico.destroy();
+      ctx.clearRect(0, 0, contenedorGrafico.width, contenedorGrafico.height);
+      ctx.font = "16px Arial";
+      ctx.fillText(`KPI "${kpiName}" no encontrado en datos.`, 10, 50);
+      return;
+    }
+
+    // Extraer fechas y valores KPI
+    const keyFecha = vista === "dia" ? IDX.DIA : (vista === "semana" ? IDX.SEMANA : IDX.MES);
+    let valores = datosFiltrados.map(f => {
+      let fecha = f[keyFecha];
+      let valStr = f[idxKPI].replace("%","").replace(",",".");
+      let valNum = parseFloat(valStr);
+      if(isNaN(valNum)) valNum = null;
+      return {fecha, valNum};
+    }).filter(v => v.valNum !== null);
+
+    // Ordenar fechas (solo para vista día ordenamos cronológicamente)
+    valores.sort((a,b) => {
+      if(vista === "dia"){
+        const da = parseFechaLatam(a.fecha);
+        const db = parseFechaLatam(b.fecha);
+        return da - db;
+      } else {
+        return a.fecha.localeCompare(b.fecha);
+      }
+    });
+
+    if(valores.length === 0){
+      if(window.grafico) window.grafico.destroy();
+      ctx.clearRect(0, 0, contenedorGrafico.width, contenedorGrafico.height);
+      ctx.font = "16px Arial";
+      ctx.fillText(`No hay valores válidos para graficar.`, 10, 50);
+      return;
+    }
+
+    // Si ya hay gráfico creado, destruirlo para actualizar
+    if(window.grafico) window.grafico.destroy();
+
+    window.grafico = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: valores.map(v => v.fecha),
+        datasets: [{
+          label: `${kpiName} - ${racSeleccionado}`,
+          data: valores.map(v => v.valNum),
+          fill: false,
+          borderColor: 'rgb(54, 162, 235)',
+          tension: 0.3,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          borderWidth: 3
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: true } },
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+  }
+
+  // Evento clic en filas de la tabla para mostrar gráfico
+  const tbody = document.querySelector("tbody");
+  tbody.addEventListener("click", e => {
+    const tr = e.target.closest("tr");
+    if(!tr) return;
+
+    const celdas = tr.querySelectorAll("td");
+    if(celdas.length === 0) return;
+
+    // Obtener RAC (columna índice RAC)
+    const rac = celdas[IDX.RAC].textContent.trim();
+    if(!rac) return;
+
+    const vista = document.getElementById("vista").value;
+    mostrarGraficoTendencia(rac, vista);
+
+    // Marcar fila seleccionada
+    tbody.querySelectorAll("tr").forEach(row => row.classList.remove("selected"));
+    tr.classList.add("selected");
+  });
+
+  // Listeners filtros
   document.getElementById("filtro").addEventListener("input", aplicarFiltros);
   document.getElementById("vista").addEventListener("change", aplicarFiltros);
   mesSel.addEventListener("change", aplicarFiltros);
@@ -204,7 +307,9 @@ fetch(url)
 })
 .catch(e => console.error("Error cargando CSV:", e));
 
+
 </script>
 </body>
 </html>
+
 
