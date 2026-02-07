@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Panel de Indicadores Interactivo</title>
+<title>Panel de Indicadores Mejorado</title>
 
 <style>
 body{
@@ -14,7 +14,7 @@ body{
 h2{text-align:center;color:#2c3e50;}
 input,select{padding:10px;margin:8px 5px;border-radius:6px;border:1px solid #ccc;}
 .controles{text-align:center;margin-bottom:10px;}
-.table-container{overflow:auto;max-height:50vh;border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,0.1);background:white;}
+.table-container{overflow:auto;max-height:65vh;border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,0.1);background:white;}
 table{border-collapse:collapse;width:100%;font-size:12px;transition: all 0.3s;}
 th{background:#34495e;color:white;padding:10px;position:sticky;top:0;z-index:2;cursor:pointer;}
 td{padding:8px;text-align:center;border-bottom:1px solid #eee;position:relative;transition: all 0.3s;}
@@ -22,36 +22,54 @@ td, th {white-space: nowrap;text-overflow: ellipsis; overflow: hidden;}
 th:nth-child(2), td:nth-child(2) {min-width: 120px;text-align:left;}
 tr:nth-child(even){background:#f9fbfd;}
 tr:hover{background:#e8f4ff;}
-tr.selected{background:#cce5ff !important;}
 .kpi-verde{background:#d4edda;color:#155724;font-weight:bold;}
 .kpi-amarillo{background:#fff3cd;color:#856404;font-weight:bold;}
 .kpi-rojo{background:#f8d7da;color:#721c24;font-weight:bold;}
 #resumenKPI{background:white;padding:12px;border-radius:10px;margin-bottom:10px;box-shadow:0 4px 10px rgba(0,0,0,0.1);font-size:12px;}
 #fechaActualizacion{text-align:center;font-weight:bold;margin-bottom:10px;color:#2c3e50;}
+/* Ocultar columnas Representante(DNI) y Lider */
 th:nth-child(1),td:nth-child(1),th:nth-child(3),td:nth-child(3){display:none;}
-th:nth-child(2),td:nth-child(2){position: sticky;left: 0;background: white;z-index: 3;box-shadow: 2px 0 5px rgba(0,0,0,0.1);}
+/* Congelar columna RAC */
+th:nth-child(2),td:nth-child(2){
+  position: sticky;
+  left: 0;
+  background: white;
+  z-index: 3;
+  box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+}
 th:nth-child(2){z-index: 4;background: #34495e;}
-.barra-kpi{height:10px;border-radius:5px;margin-bottom:2px;transition: width 0.5s;}
+/* Barras de KPI */
+.barra-kpi{
+  height:10px;
+  border-radius:5px;
+  margin-bottom:2px;
+  transition: width 0.5s;
+}
+/* Tooltips */
 td[data-tooltip]:hover::after{
   content: attr(data-tooltip);
   position:absolute;
-  top:-25px; left:50%;
+  top:-25px;
+  left:50%;
   transform:translateX(-50%);
-  background:#333;color:#fff;
-  padding:3px 6px;border-radius:4px;font-size:10px;white-space: nowrap;z-index:10;
+  background:#333;
+  color:#fff;
+  padding:3px 6px;
+  border-radius:4px;
+  font-size:10px;
+  white-space: nowrap;
+  z-index:10;
 }
-#graficosRAC{background:white;padding:10px;margin-bottom:10px;border-radius:10px;box-shadow:0 4px 10px rgba(0,0,0,0.1);}
-canvas{max-width:100%;height:80px;}
-
-tr.selected {
-  background: #cce5ff !important;
-}  
-  
+/* Animación de highlight */
+@keyframes highlight-up {0%{background:#fff}100%{background:#d4edda;}}
+@keyframes highlight-down {0%{background:#fff}100%{background:#f8d7da;}}
+.highlight-up{animation: highlight-up 1s;}
+.highlight-down{animation: highlight-down 1s;}
 </style>
 </head>
 <body>
 
-<h2>📊 Panel de Indicadores Interactivo</h2>
+<h2>📊 Panel de Indicadores Mejorado</h2>
 <div id="fechaActualizacion"></div>
 
 <div class="controles">
@@ -64,10 +82,7 @@ tr.selected {
   <select id="mesFiltro"><option value="">Todos los meses</option></select>
 </div>
 
-<div id="graficosRAC">
-  <strong>Selecciona un RAC para ver su tendencia:</strong>
-  <canvas id="graficoRAC"></canvas>
-</div>
+<div id="resumenKPI"></div>
 
 <div class="table-container">
   <table>
@@ -75,14 +90,14 @@ tr.selected {
     <tbody></tbody>
   </table>
 </div>
+
+<!-- Contenedor del gráfico dinámico por RAC -->
 <div id="graficosRAC" style="background:white;padding:10px;margin-top:10px;border-radius:10px;box-shadow:0 4px 10px rgba(0,0,0,0.1);">
   <strong>📈 Tendencia del RAC seleccionado:</strong>
   <canvas id="graficoRAC"></canvas>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  
-  
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <script>
 const url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTv__z4dmUZOol3wAk_xfvxVHrJHFuaP3dKX8M9S-j6dd3WjUz0iCpxGnIOzpq2s1oOKPWGf5q45Yox/pub?output=csv";
 
@@ -109,15 +124,15 @@ fetch(url)
   const encabezados=filas[0];
   const datos=filas.slice(1);
 
-  const IDX={DIA:encabezados.indexOf("DIA"),SEMANA:encabezados.indexOf("SEMANA"),MES:encabezados.indexOf("MES"),RAC:encabezados.indexOf("RAC")};
+  const IDX={DIA:encabezados.indexOf("DIA"),SEMANA:encabezados.indexOf("SEMANA"),MES:encabezados.indexOf("MES")};
 
-  // Fecha más reciente
   function parseFechaLatam(fechaStr){
     if(!fechaStr) return null;
     const partes=fechaStr.includes("/")?fechaStr.split("/"):fechaStr.split("-");
     if(partes.length!==3) return null;
     return new Date(parseInt(partes[2],10), parseInt(partes[1],10)-1, parseInt(partes[0],10));
   }
+
   const fechas = datos.map(f=>f[IDX.DIA]).filter(f=>f && !f.toLowerCase().includes("total")).map(parseFechaLatam).filter(f=>f instanceof Date && !isNaN(f));
   const fechaMax = new Date(Math.max(...fechas));
   document.getElementById("fechaActualizacion").textContent = `DATOS ACTUALIZADOS AL DÍA ${fechaMax.toLocaleDateString("es-CL")}`;
@@ -127,7 +142,6 @@ fetch(url)
 
   thead.innerHTML="<tr>"+encabezados.map(h=>`<th data-col="${h}">${h}</th>`).join("")+"</tr>";
 
-  // Meses dinámicos
   const mesSel=document.getElementById("mesFiltro");
   [...new Set(datos.map(f=>f[IDX.MES]))].forEach(m=>{
     if(!m) return;
@@ -167,8 +181,6 @@ fetch(url)
         const td=document.createElement("td");
         const kpiClass=reglaPorColumna(encabezados[i],c);
         td.className=kpiClass;
-
-        // KPI porcentual con barra
         if(c.includes("%")){
           const n=parseFloat(c.replace("%",""));
           const bar=document.createElement("div");
@@ -183,6 +195,8 @@ fetch(url)
         }
         tr.appendChild(td);
       });
+      // Al hacer click en un RAC para ver gráfico
+      tr.addEventListener("click",()=>generarGraficoRAC(f));
       frag.appendChild(tr);
     });
     tbody.appendChild(frag);
@@ -223,92 +237,31 @@ fetch(url)
     });
   });
 
-  /* ===== Gráfico dinámico por RAC ===== */
-  const canvasRAC = document.getElementById("graficoRAC");
-  const ctxRAC = canvasRAC.getContext("2d");
-  let graficoRAC;
-
-  function mostrarGraficoRAC(rac, vista) {
-    const idxRAC = IDX.RAC;
-    const idxInicio = encabezados.indexOf("REICIENCIA"); // Ajusta si tu columna se llama distinto
-    if(idxInicio === -1) return;
-
-    const datosFiltrados = datos.filter(f => {
-      if(f[idxRAC] !== rac) return false;
-      if(vista==="dia") return f[IDX.DIA] && !/total/i.test(f[IDX.DIA].toLowerCase());
-      if(vista==="semana") return f[IDX.SEMANA] && /total semana/i.test(f[IDX.SEMANA].toLowerCase());
-      if(vista==="mes") return f[IDX.MES] && /total/i.test(f[IDX.MES].toLowerCase());
-      return false;
-    });
-
-    if(datosFiltrados.length === 0){
-      if(graficoRAC) graficoRAC.destroy();
-      ctxRAC.clearRect(0,0,canvasRAC.width,canvasRAC.height);
-      ctxRAC.font="16px Arial";
-      ctxRAC.fillText(`No hay datos para ${rac}`,10,50);
-      return;
-    }
-
-    const datasets = [];
-    for(let i=idxInicio; i<encabezados.length; i++){
-      const col = encabezados[i];
-      const valores = datosFiltrados.map(f=>{
-        const valStr = f[i].replace("%","").replace(",",".");
-        const valNum = parseFloat(valStr);
-        return isNaN(valNum) ? null : valNum;
-      });
-      if(valores.every(v=>v===null)) continue;
-      datasets.push({
-        label: col,
-        data: valores,
-        borderColor: `hsl(${Math.random()*360},70%,50%)`,
-        fill: false,
-        tension: 0.3,
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        borderWidth: 2
-      });
-    }
-
-    const labels = datosFiltrados.map(f=>{
-      if(vista==="dia") return f[IDX.DIA];
-      if(vista==="semana") return f[IDX.SEMANA];
-      if(vista==="mes") return f[IDX.MES];
-      return "";
-    });
-
-    if(graficoRAC) graficoRAC.destroy();
-    graficoRAC = new Chart(ctxRAC,{
+  // Función para generar gráfico RAC
+  let chartRAC=null;
+  function generarGraficoRAC(fila){
+    const labels=["Día","Semana","Mes"];
+    const data=[fila[IDX.DIA],fila[IDX.SEMANA],fila[IDX.MES]];
+    if(chartRAC) chartRAC.destroy();
+    const ctx=document.getElementById("graficoRAC").getContext("2d");
+    chartRAC=new Chart(ctx,{
       type:'line',
-      data:{labels,datasets},
-      options:{responsive:true,plugins:{legend:{display:true}},scales:{y:{beginAtZero:true}}}
+      data:{
+        labels:labels,
+        datasets:[{
+          label:`RAC: ${fila[IDX.DIA]}`,
+          data:data.map(d=>parseFloat(d.replace("%",""))||0),
+          borderColor:'#007bff',
+          backgroundColor:'rgba(0,123,255,0.2)',
+          tension:0.3,
+          fill:true
+        }]
+      },
+      options:{responsive:true,plugins:{legend:{display:true}}}
     });
   }
 
-  // Click en fila
-  tbody.addEventListener("click", e=>{
-    const tr = e.target.closest("tr");
-    if(!tr) return;
-    const celdas = tr.querySelectorAll("td");
-    const rac = celdas[IDX.RAC]?.textContent?.trim();
-    if(!rac) return;
-    mostrarGraficoRAC(rac, vistaSel.value);
-
-    // Resaltar fila seleccionada
-    tbody.querySelectorAll("tr").forEach(row=>row.classList.remove("selected"));
-    tr.classList.add("selected");
-  });
-
 });
 </script>
-
-  
 </body>
 </html>
-
-
-
-
-
-
-
