@@ -75,207 +75,136 @@ canvas{max-width:100%;height:80px;}
 <script>
 const url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTv__z4dmUZOol3wAk_xfvxVHrJHFuaP3dKX8M9S-j6dd3WjUz0iCpxGnIOzpq2s1oOKPWGf5q45Yox/pub?output=csv";
 
-/* CSV Parser */
-function parseCSV(text){
-  const rows=[], row=[], value="", insideQuotes=false;
-  let r=[], v="", inQuotes=false;
-  for(let i=0;i<text.length;i++){
-    const c=text[i], n=text[i+1];
-    if(c === '"' && inQuotes && n === '"'){v+='"'; i++;} 
-    else if(c === '"'){inQuotes=!inQuotes;} 
-    else if(c === ',' && !inQuotes){r.push(v);v="";} 
-    else if((c=='\n'||c=='\r')&&!inQuotes){if(v||r.length){r.push(v);rows.push(r);} r=[];v="";} 
-    else v+=c;
-  }
-  if(v||r.length){r.push(v);rows.push(r);}
-  return rows;
+// Mejor parseador CSV robusto:
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  return lines.map(line => {
+    // Para manejar comillas dobles y comas dentro de campos
+    const regex = /("([^"]|"")*"|[^,]*)(,|$)/g;
+    let match, row = [];
+    while ((match = regex.exec(line)) !== null) {
+      let val = match[1];
+      if(val.startsWith('"') && val.endsWith('"')){
+        val = val.slice(1, -1).replace(/""/g, '"');
+      }
+      row.push(val);
+      if(match[3] === "") break;
+    }
+    return row;
+  });
 }
 
 fetch(url)
-.then(r=>r.text())
-.then(csv=>{
-  const filas=parseCSV(csv);
-  const encabezados=filas[0];
-  const datos=filas.slice(1);
-
-  const IDX={DIA:encabezados.indexOf("DIA"),SEMANA:encabezados.indexOf("SEMANA"),MES:encabezados.indexOf("MES")};
-
-  // Fecha más reciente
-  function parseFechaLatam(fechaStr){
-    if(!fechaStr) return null;
-    const partes=fechaStr.includes("/")?fechaStr.split("/"):fechaStr.split("-");
-    if(partes.length!==3) return null;
-    return new Date(parseInt(partes[2],10), parseInt(partes[1],10)-1, parseInt(partes[0],10));
+.then(r => r.text())
+.then(csv => {
+  const filas = parseCSV(csv);
+  if(filas.length === 0){
+    console.error("CSV vacío o mal cargado");
+    return;
   }
-  const fechas = datos.map(f=>f[IDX.DIA]).filter(f=>f && !f.toLowerCase().includes("total")).map(parseFechaLatam).filter(f=>f instanceof Date && !isNaN(f));
+  const encabezados = filas[0];
+  const datos = filas.slice(1);
+
+  console.log("Encabezados:", encabezados);
+  console.log("Primeros datos:", datos.slice(0,3));
+
+  const IDX = {
+    DIA: encabezados.indexOf("DIA"),
+    SEMANA: encabezados.indexOf("SEMANA"),
+    MES: encabezados.indexOf("MES")
+  };
+
+  console.log("Índices:", IDX);
+
+  if(IDX.DIA === -1 || IDX.SEMANA === -1 || IDX.MES === -1){
+    console.error("Columnas DIA, SEMANA o MES no encontradas, revisar CSV");
+    return;
+  }
+
+  // Función fecha latam simplificada
+  function parseFechaLatam(fechaStr) {
+    if(!fechaStr) return null;
+    const partes = fechaStr.includes("/") ? fechaStr.split("/") : fechaStr.split("-");
+    if(partes.length !== 3) return null;
+    const dia = parseInt(partes[0],10);
+    const mes = parseInt(partes[1],10)-1;
+    const anio = parseInt(partes[2],10);
+    return new Date(anio, mes, dia);
+  }
+
+  // Calcular fecha máxima de actualización
+  const fechas = datos
+    .map(f => f[IDX.DIA])
+    .filter(f => f && !f.toLowerCase().includes("total"))
+    .map(parseFechaLatam)
+    .filter(f => f instanceof Date && !isNaN(f));
+
   const fechaMax = new Date(Math.max(...fechas));
-  document.getElementById("fechaActualizacion").textContent = `DATOS ACTUALIZADOS AL DÍA ${fechaMax.toLocaleDateString("es-CL")}`;
+  document.getElementById("fechaActualizacion").textContent =
+    `DATOS ACTUALIZADOS AL DÍA ${fechaMax.toLocaleDateString("es-CL")}`;
 
-  const thead=document.querySelector("thead");
-  const tbody=document.querySelector("tbody");
+  const thead = document.querySelector("thead");
+  const tbody = document.querySelector("tbody");
+  thead.innerHTML = "<tr>" + encabezados.map(h => `<th>${h}</th>`).join("") + "</tr>";
 
-  thead.innerHTML="<tr>"+encabezados.map(h=>`<th data-col="${h}">${h}</th>`).join("")+"</tr>";
-
-  // Meses dinámicos
-  const mesSel=document.getElementById("mesFiltro");
-  [...new Set(datos.map(f=>f[IDX.MES]))].forEach(m=>{
-    if(!m) return;
-    const o=document.createElement("option");
-    o.value=o.textContent=m;
-    mesSel.appendChild(o);
+  // Cargar meses dinámicos
+  const mesSel = document.getElementById("mesFiltro");
+  [...new Set(datos.map(f => f[IDX.MES]).filter(m => m))].forEach(m => {
+    const option = document.createElement("option");
+    option.value = option.textContent = m;
+    mesSel.appendChild(option);
   });
 
-  const reglasKPI={
-    "% FCR 1dia":90,"%FCR 7dia":90,"% Adher General":80,"% Descto":80,"% Rein.":5,"% Ef. BAF":80,
-    "% Argumentario":23,"% Oferta":80,"% Adh Capl":25,"%adh Oferta 0":20,"%adh Oferta 1":12,"%adh Oferta 2":23,
-    "%adh Oferta 3":55,"% VS Atendidas":90,"% Baja Parc.":4,"% Short Call":5,"% Transf.":10,"% Baja Parc. IPTV":4,"% Corte rac":1
-  };
-  const reglasInvertidas=["% Short Call","% Transf.","% Adh Capl","% Rein.","%adh Oferta 0","% Baja Parc.","% Argumentario","%adh Oferta 1","%adh Oferta 2","%adh Oferta 3","% Baja Parc. IPTV","% Corte rac"];
-
-  function reglaPorColumna(h,v){
-    if(!v.includes("%")) return "";
-    const n=parseFloat(v.replace("%",""));
-    if(isNaN(n)) return "";
-    const meta=reglasKPI[h]??85;
-    if(reglasInvertidas.includes(h)){
-      if(n<=meta) return "kpi-verde";
-      if(n<=meta+5) return "kpi-amarillo";
-      return "kpi-rojo";
+  function render(filtrado) {
+    tbody.innerHTML = "";
+    if(filtrado.length === 0){
+      tbody.innerHTML = "<tr><td colspan='"+encabezados.length+"' style='text-align:center;color:#888'>No hay datos para mostrar</td></tr>";
+      return;
     }
-    if(n>=meta) return "kpi-verde";
-    if(n>=meta-10) return "kpi-amarillo";
-    return "kpi-rojo";
-  }
-
-  let graficoRAC=null;
-
-  function render(filtrado){
-    tbody.innerHTML="";
-    const frag=document.createDocumentFragment();
-    filtrado.forEach(f=>{
-      const tr=document.createElement("tr");
-      f.forEach((c,i)=>{
-        const td=document.createElement("td");
-        const kpiClass=reglaPorColumna(encabezados[i],c);
-        td.className=kpiClass;
-
-        if(c.includes("%")){
-          const n=parseFloat(c.replace("%",""));
-          const bar=document.createElement("div");
-          bar.className="barra-kpi";
-          bar.style.width=n+"%";
-          bar.style.background=kpiClass==="kpi-verde"?"#28a745":kpiClass==="kpi-amarillo"?"#ffc107":"#dc3545";
-          td.appendChild(bar);
-          td.appendChild(document.createTextNode(c));
-          td.setAttribute("data-tooltip",`Meta: ${reglasKPI[encabezados[i]]||85}%`);
-        }else{
-          td.textContent=c;
-        }
+    filtrado.forEach(fila => {
+      const tr = document.createElement("tr");
+      fila.forEach(c => {
+        const td = document.createElement("td");
+        td.textContent = c;
         tr.appendChild(td);
       });
-
-      // Click en fila para gráfico
-      tr.addEventListener("click",()=>{        
-        document.querySelectorAll("tr").forEach(r=>r.classList.remove("selected"));
-        tr.classList.add("selected");
-        actualizarGrafico(f);
-      });
-
-      frag.appendChild(tr);
+      tbody.appendChild(tr);
     });
-    tbody.appendChild(frag);
   }
 
-  function aplicarFiltros(){
-    const t=filtro.value.toLowerCase();
-    const v=vistaSel.value;
-    const m=mesSel.value;
-    render(datos.filter(f=>{
-      if(m && f[IDX.MES]!==m) return false;
-      if(v==="dia"){if(!f[IDX.DIA] || f[IDX.DIA].toLowerCase().includes("total") || f[IDX.SEMANA]?.toLowerCase().includes("total") || f[IDX.MES]?.toLowerCase().includes("total")) return false;}
-      if(v==="semana" && !f[IDX.SEMANA].includes("Total Semana")) return false;
-      if(v==="mes" && !f[IDX.MES].includes("Total")) return false;
+  function aplicarFiltros() {
+    const t = document.getElementById("filtro").value.toLowerCase();
+    const v = document.getElementById("vista").value;
+    const m = mesSel.value;
+
+    // Para debug:
+    console.log(`Filtrando con texto: "${t}", vista: "${v}", mes: "${m}"`);
+
+    const filtrado = datos.filter(f => {
+      if(m && f[IDX.MES] !== m) return false;
+      // COMENTAMOS temporalmente filtro por vista para probar datos:
+      /*
+      if(v === "dia"){
+        if(!f[IDX.DIA] || f[IDX.DIA].toLowerCase().includes("total")) return false;
+      }
+      if(v === "semana" && !f[IDX.SEMANA].includes("Total Semana")) return false;
+      if(v === "mes" && !f[IDX.MES].includes("Total")) return false;
+      */
       return f.join(" ").toLowerCase().includes(t);
-    }));
-    if(graficoRAC && document.querySelector("tr.selected")){
-      const fila=document.querySelector("tr.selected");
-      const idx=[...tbody.children].indexOf(fila);
-      actualizarGrafico(datos.filter(f=>{
-        if(m && f[IDX.MES]!==m) return false;
-        if(v==="dia"){if(!f[IDX.DIA] || f[IDX.DIA].toLowerCase().includes("total") || f[IDX.SEMANA]?.toLowerCase().includes("total") || f[IDX.MES]?.toLowerCase().includes("total")) return false;}
-        if(v==="semana" && !f[IDX.SEMANA].includes("Total Semana")) return false;
-        if(v==="mes" && !f[IDX.MES].includes("Total")) return false;
-        return f.join(" ").toLowerCase().includes(t);
-      })[idx]);
-    }
+    });
+    console.log("Datos filtrados:", filtrado.length);
+    render(filtrado);
   }
 
-  function debounce(fn,d=300){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),d);};}
+  document.getElementById("filtro").addEventListener("input", aplicarFiltros);
+  document.getElementById("vista").addEventListener("change", aplicarFiltros);
+  mesSel.addEventListener("change", aplicarFiltros);
 
-  const filtro=document.getElementById("filtro");
-  filtro.addEventListener("keyup",debounce(aplicarFiltros));
-  vistaSel.addEventListener("change",aplicarFiltros);
-  mesSel.addEventListener("change",aplicarFiltros);
   aplicarFiltros();
+})
+.catch(e => console.error("Error cargando CSV:", e));
 
-  // Ordenamiento por columna
-  document.querySelectorAll("th").forEach(th=>{
-    th.addEventListener("click",()=>{
-      const col=th.getAttribute("data-col");
-      const idx=encabezados.indexOf(col);
-      datos.sort((a,b)=>{
-        const valA=a[idx].replace("%",""), valB=b[idx].replace("%","");
-        return (!isNaN(parseFloat(valA))?parseFloat(valA):valA) - (!isNaN(parseFloat(valB))?parseFloat(valB):valB);
-      });
-      aplicarFiltros();
-    });
-  });
-
-  // Función para gráfico
-  function actualizarGrafico(fila){
-    const labels=[], data=[], bgColor=[];
-    const v=vistaSel.value;
-    const idxFecha = {dia:IDX.DIA, semana:IDX.SEMANA, mes:IDX.MES}[v];
-
-    datos.forEach(d=>{
-      if(d[1]===fila[1]){
-        labels.push(d[idxFecha]);
-        // Tomamos un KPI principal, por ejemplo % FCR 1dia
-        const kpi = d[encabezados.indexOf("% FCR 1dia")];
-        data.push(parseFloat(kpi)||0);
-        const clase=reglaPorColumna("% FCR 1dia",kpi);
-        bgColor.push(clase==="kpi-verde"?"#28a745":clase==="kpi-amarillo"?"#ffc107":"#dc3545");
-      }
-    });
-
-    if(graficoRAC) graficoRAC.destroy();
-    const ctx = document.getElementById('graficoRAC').getContext('2d');
-    graficoRAC = new Chart(ctx,{
-      type:'line',
-      data:{
-        labels:labels,
-        datasets:[{
-          label:`% FCR 1dia de ${fila[1]}`,
-          data:data,
-          borderColor:'#007bff',
-          backgroundColor:'rgba(0,123,255,0.1)',
-          fill:true,
-          tension:0.3,
-          pointBackgroundColor:bgColor,
-          pointRadius:5
-        }]
-      },
-      options:{
-        responsive:true,
-        plugins:{legend:{display:false}},
-        scales:{
-          y:{beginAtZero:true,max:100}
-        }
-      }
-    });
-  }
-
-});
 </script>
 </body>
 </html>
+
