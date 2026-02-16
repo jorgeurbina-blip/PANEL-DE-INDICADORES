@@ -41,7 +41,6 @@ th:nth-child(2),td:nth-child(2){
 }
 th:nth-child(2){z-index: 4;background: #34495e;}
 
-/* Barras KPI */
 .barra-kpi{
   height:10px;
   border-radius:5px;
@@ -49,7 +48,6 @@ th:nth-child(2){z-index: 4;background: #34495e;}
   transition: width 0.5s;
 }
 
-/* Botón detalle */
 .btn-detalle{
   padding:5px 10px;
   border:none;
@@ -63,7 +61,6 @@ th:nth-child(2){z-index: 4;background: #34495e;}
   background:#2980b9;
 }
 
-/* Tooltips */
 td[data-tooltip]:hover::after{
   content: attr(data-tooltip);
   position:absolute;
@@ -156,7 +153,6 @@ fetch(url)
   const thead=document.querySelector("thead");
   const tbody=document.querySelector("tbody");
 
-  // 🔥 Encabezado con columna Detalle agregada
   thead.innerHTML="<tr>"+
     encabezados.map(h=>`<th data-col="${h}">${h}</th>`).join("")+
     "<th>Detalle</th></tr>";
@@ -214,15 +210,17 @@ fetch(url)
         tr.appendChild(td);
       });
 
-      // 🔥 Botón Detalle
       const tdBtn=document.createElement("td");
       const rac=f[1];
       const btn=document.createElement("button");
       btn.textContent="Ver";
       btn.className="btn-detalle";
+
       btn.onclick=()=>{
-        window.location.href=`detalle.html?rac=${encodeURIComponent(rac)}`;
+        const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+        window.location.href = basePath + "detalle.html?rac=" + encodeURIComponent(rac);
       };
+
       tdBtn.appendChild(btn);
       tr.appendChild(tdBtn);
 
@@ -234,17 +232,13 @@ fetch(url)
 
   function aplicarFiltros(){
     const t=filtro.value.toLowerCase();
-    const v=vistaSel.value;
     render(datos.filter(f=>f.join(" ").toLowerCase().includes(t)));
   }
 
   function debounce(fn,d=300){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),d);};}
 
   const filtro=document.getElementById("filtro");
-  const vistaSel=document.getElementById("vista");
-
   filtro.addEventListener("keyup",debounce(aplicarFiltros));
-  vistaSel.addEventListener("change",aplicarFiltros);
 
   aplicarFiltros();
 
